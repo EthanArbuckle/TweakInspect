@@ -1,7 +1,7 @@
 import logging
 
 from strongarm.macho import CallerXRef
-from strongarm.objc import ObjcFunctionAnalyzer, RegisterContentsType
+from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContentsType
 
 from tweakinspect.codesearch import FunctionHookCodeSearchOperation
 from tweakinspect.models import Hook, ObjectiveCTarget
@@ -56,13 +56,24 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
             logging.debug(f"Did not find calls to class_getInstanceMethod or class_getClassMethod for {invocation}")
             return None
 
-        correlated_idx = max(invocation_idx, len(getMethod_invocations) - 1)
-        getMethod_invocation = getMethod_invocations[correlated_idx]
+        # Find the class_get*Method() call that is closest (but not after) the method_setImplementation() call
+        closest_getMethod_invocation: ObjcInstruction | None = None
+        shorted_distance_to_invocation = 0xFFFFFFFF
+        for getMethod_invocation in getMethod_invocations:
+            if getMethod_invocation.address < invocation.caller_addr:
+                distance = invocation.caller_addr - getMethod_invocation.address
+                if distance < shorted_distance_to_invocation:
+                    shorted_distance_to_invocation = distance
+                    closest_getMethod_invocation = getMethod_invocation
+
+        if not closest_getMethod_invocation:
+            logging.debug(f"Could not find a getMethod call before method_setImplementation for {class_name}")
+            return None
 
         # Get the value of x1 at the invocation of class_getInstanceMethod().
         # It will be the selector name
         sel_value = self.get_register_contents_at_instruction(
-            function_analyzer, "x1", getMethod_invocation.raw_instr, strongarm=False
+            function_analyzer, "x1", closest_getMethod_invocation.raw_instr, strongarm=False
         )
         if not sel_value or sel_value.type != RegisterContentsType.IMMEDIATE:
             return None
