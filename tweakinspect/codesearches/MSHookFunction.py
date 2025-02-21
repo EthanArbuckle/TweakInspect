@@ -34,7 +34,7 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
 
         # The first arg is the function to hook.
         # First, see if its an address that correlates with a known function
-        x0 = self.get_register_contents_at_instruction(function_analyzer, "x0", instructions)
+        x0 = self.get_register_contents_at_instruction(function_analyzer, "x0", instructions, strongarm=False)
         if not x0 or x0.type != RegisterContentsType.IMMEDIATE:
             logging.debug(f"Unexpected x0 value for invocation {invocation}: {x0}")
             return None
@@ -54,6 +54,32 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                 # ?? function = analyzer.exported_symbol_name_for_address(x0.value)
                 symbol_name = self.read_string_from_register(function_analyzer, "x0", parsed_instructions)
                 symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
+                
+                # If the string is a path, it's not a symbol name
+                if '/' in symbol_name:
+                    symbol_name = None
+
+            if symbol_name:
+                return Hook(
+                    target=FunctionTarget(
+                        target_function_address=None,
+                        target_function_name=symbol_name,
+                    ),
+                    replacement_address=x1.value,
+                    original_address=0,
+                    callsite_address=int(invocation.caller_addr),
+                )
+        # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
+        for lookup_func in ["MSFindSymbol", "dlsym"]:
+            lookup_func_invocation = self.last_invocation_of_function(
+                function_analyzer, lookup_func, invocation.caller_addr
+            )
+            if not lookup_func_invocation:
+                continue
+
+            # Found it, x1 should be a string that is the class name
+            symbol_name = self.read_string_from_register(function_analyzer, "x1", lookup_func_invocation)
+            symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
 
             return Hook(
                 target=FunctionTarget(
@@ -64,26 +90,5 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                 original_address=0,
                 callsite_address=int(invocation.caller_addr),
             )
-        else:
-            # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
-            for lookup_func in ["MSFindSymbol", "dlsym"]:
-                lookup_func_invocation = self.last_invocation_of_function(
-                    function_analyzer, lookup_func, invocation.caller_addr
-                )
-                if not lookup_func_invocation:
-                    continue
-
-                # Found it, x1 should be a string that is the class name
-                symbol_name = self.read_string_from_register(function_analyzer, "x1", lookup_func_invocation)
-                symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
-
-                return Hook(
-                    target=FunctionTarget(
-                        target_function_address=None,
-                        target_function_name=symbol_name,
-                    ),
-                    replacement_address=x1.value,
-                    original_address=0,
-                    callsite_address=int(invocation.caller_addr),
-                )
+        
         return None
