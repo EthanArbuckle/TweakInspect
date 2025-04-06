@@ -1,8 +1,6 @@
 from pathlib import Path
 
-from idaapi import *
-from idautils import *
-from idc import *
+from idaapi import SN_NOCHECK, get_input_file_path, set_name
 
 from tweakinspect.codesearches.class_addMethod import ClassAddMethodCodeSearchOperation
 from tweakinspect.codesearches.class_replaceMethod import ClassReplaceMethodCodeSearchOperation
@@ -15,7 +13,7 @@ from tweakinspect.models import Hook, NewObjectiveCMethodTarget
 
 
 class TweakInspectIDA:
-    def __init__(self):
+    def __init__(self) -> None:
         self.codesearch_ops = [
             MSHookFunctionCodeSearchOperation,
             MSHookMessageExCodeSearchOperation,
@@ -46,7 +44,7 @@ class TweakInspectIDA:
 
         return name
 
-    def run(self):
+    def run(self) -> None:
         binary_path = get_input_file_path()
         if not binary_path:
             print("[Error] Unable to get the current binary path")
@@ -55,7 +53,7 @@ class TweakInspectIDA:
         executable = Executable(file_path=Path(binary_path))
         hooks: list[Hook] = []
         for code_search_op in self.codesearch_ops:
-            hooks.extend(code_search_op(executable).analyze())
+            hooks.extend(code_search_op(executable).analyze())  # type: ignore
 
         if not hooks:
             print("No hooks found in binary")

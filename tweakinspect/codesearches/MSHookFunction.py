@@ -54,9 +54,9 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                 # ?? function = analyzer.exported_symbol_name_for_address(x0.value)
                 symbol_name = self.read_string_from_register(function_analyzer, "x0", parsed_instructions)
                 symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
-                
+
                 # If the string is a path, it's not a symbol name
-                if '/' in symbol_name:
+                if "/" in symbol_name:
                     symbol_name = None
 
             if symbol_name:
@@ -90,5 +90,5 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                 original_address=0,
                 callsite_address=int(invocation.caller_addr),
             )
-        
+
         return None
