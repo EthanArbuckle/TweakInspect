@@ -17,6 +17,13 @@ from tweakinspect.models import Hook
 from tweakinspect.set_id0 import does_call_setgid0, does_call_setuid0
 
 
+try:
+    import strongarm_patch  # noqa F401
+except Exception as exc:
+    print(f"Failed to apply strongarm patch: {exc}")
+    exit(1)
+
+
 class Executable(object):
     """An executable from the tweak package"""
 
