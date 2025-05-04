@@ -82,14 +82,9 @@ class TestClassAddMethod:
         void newUpdateLocation(id self, SEL _cmd, id location) {}
 
         __attribute__((constructor)) static void initialize(void) {
-            class_addMethod(%c("CustomNetworkManager"),
-                            NSSelectorFromString(@"fetchDataFromAPI"),(IMP)newFetchData, "v@:");
-
-            class_addMethod(%c("CustomAnimator"),
-                            sel_registerName("animateView:withDuration:"), (IMP)newAnimateView, "v@:@d");
-
-            class_addMethod(%c("CustomLocationManager"),
-                                @selector(updateWithLocation:), (IMP)newUpdateLocation, "v@:@");
+            class_addMethod(objc_getClass("CustomNetworkManager"), @selector(fetchDataFromAPI), (IMP)newFetchData, "v@:");
+            class_addMethod(objc_getClass("CustomAnimator"), @selector(animateView:withDuration:), (IMP)newAnimateView, "v@:@d");
+            class_addMethod(objc_getClass("CustomLocationManager"), @selector(updateWithLocation:), (IMP)newUpdateLocation, "v@:@");            
         }
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
