@@ -4,5 +4,6 @@ flake8
 isort
 mypy
 pytest
-strongarm-ios
 unix-ar
+
+strongarm-ios @ git+https://github.com/EthanArbuckle/strongarm
