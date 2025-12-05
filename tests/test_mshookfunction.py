@@ -414,10 +414,10 @@ class TestMsHookFunction:
 
             %ctor {
                 MSImageRef substrate = MSGetImageByName("/usr/lib/libsubstrate.dylib");
-                void *_MSHookFunction = MSFindSymbol(substrate, "MSHookFunction");
+                void *_MSHookFunction = MSFindSymbol(substrate, "_MSHookFunction");
                 if (_MSHookFunction) {
                     MSImageRef calculator = MSGetImageByName("/System/Library/PrivateFrameworks/Calculate.framework/Calculate");
-                    void *CalculatePerformExpression = MSFindSymbol(calculator, "CalculatePerformExpression");
+                    void *CalculatePerformExpression = MSFindSymbol(calculator, "_CalculatePerformExpression");
 
                     ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, &orig_CalculatePerformExpression);
                 }
@@ -449,7 +449,7 @@ class TestMsHookFunction:
 
             %ctor {
                 MSImageRef substrate = MSGetImageByName("/usr/lib/libsubstrate.dylib");
-                void *_MSHookFunction = MSFindSymbol(substrate, "MSHookFunction");
+                void *_MSHookFunction = MSFindSymbol(substrate, "_MSHookFunction");
                 if (_MSHookFunction) {
                     void *handle = dlopen("/System/Library/PrivateFrameworks/Calculate.framework/Calculate", RTLD_LAZY);
                     void *CalculatePerformExpression = dlsym(handle, "CalculatePerformExpression");
@@ -487,7 +487,7 @@ class TestMsHookFunction:
                 void *_MSHookFunction = dlsym(substrate, "MSHookFunction");
                 if (_MSHookFunction) {
                     MSImageRef calculator = MSGetImageByName("/System/Library/PrivateFrameworks/Calculate.framework/Calculate");
-                    void *CalculatePerformExpression = MSFindSymbol(calculator, "CalculatePerformExpression");
+                    void *CalculatePerformExpression = MSFindSymbol(calculator, "_CalculatePerformExpression");
 
                     ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, &orig_CalculatePerformExpression);
                 }
