@@ -19,6 +19,12 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
         instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
         parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
 
+        # x2 may hold the address of orig
+        orig_address = 0
+        x2 = self.get_register_contents_at_instruction(function_analyzer, "x2", instructions)
+        if x2.value and x2.type == RegisterContentsType.IMMEDIATE:
+            orig_address = x2.value
+
         # The first arg is the function to hook.
         # First, see if its an address that correlates with a known function
         x0 = self.get_register_contents_at_instruction(function_analyzer, "x0", instructions, strongarm=False)
@@ -54,7 +60,7 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                         target_function_name=symbol_name,
                     ),
                     replacement_address=x1.value,
-                    original_address=0,
+                    original_address=orig_address,
                     callsite_address=int(invocation.caller_addr),
                 )
         # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
@@ -81,7 +87,7 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                     target_function_name=symbol_name,
                 ),
                 replacement_address=x1.value,
-                original_address=0,
+                original_address=orig_address,
                 callsite_address=int(invocation.caller_addr),
             )
 

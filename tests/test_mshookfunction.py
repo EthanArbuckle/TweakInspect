@@ -21,7 +21,7 @@ class TestMsHookFunction:
             assert hook.target.target_function_name == "fopen"
             assert hook.callsite_address >= 0x4000
             assert hook.replacement_address >= 0x4000
-            assert hook.original_address == 0
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hookf fopen()"
 
     def test_multiple_hookf_linked_functions(self) -> None:
@@ -47,7 +47,7 @@ class TestMsHookFunction:
             assert hook1.target.target_function_name == "fclose"
             assert hook1.callsite_address >= 0x4000
             assert hook1.replacement_address >= 0x4000
-            assert hook1.original_address == 0
+            assert hook1.original_address >= 0x4000
             assert str(hook1) == "%hookf fclose()"
 
             hook2 = hooks[1]
@@ -55,7 +55,7 @@ class TestMsHookFunction:
             assert hook2.target.target_function_name == "fopen"
             assert hook2.callsite_address >= 0x4000
             assert hook2.replacement_address >= 0x4000
-            assert hook2.original_address == 0
+            assert hook2.original_address >= 0x4000
             assert str(hook2) == "%hookf fopen()"
 
             hook3 = hooks[2]
@@ -63,7 +63,7 @@ class TestMsHookFunction:
             assert hook3.target.target_function_name == "fseek"
             assert hook3.callsite_address >= 0x4000
             assert hook3.replacement_address >= 0x4000
-            assert hook3.original_address == 0
+            assert hook3.original_address >= 0x4000
             assert str(hook3) == "%hookf fseek()"
 
     # def test_hookf_dynamic_lookup(self) -> None:
@@ -94,7 +94,7 @@ class TestMsHookFunction:
     #         exec = Executable(file_path=compiled_binary)
     #         assert exec.get_hooks() == ["%hookf add()", "%hookf sub()", "%hookf mult()"]
 
-    def test_mshookfunction_linked_function(self) -> None:
+    def test_mshookfunction_linked_function__no_orig(self) -> None:
         source_code = """
         #import <Foundation/Foundation.h>
         int hooked_close(int fd) {
@@ -126,11 +126,13 @@ class TestMsHookFunction:
         %ctor {
             MSHookFunction((void *)open, (void *)hooked_open, NULL);
         }
+
+        static void *orig_close = NULL;
         int hooked_close(int fd) {
             return 0;
         }
         %ctor {
-            MSHookFunction((void *)close, (void *)hooked_close, NULL);
+            MSHookFunction((void *)close, (void *)hooked_close, &orig_close);
         }
         int hooked_lseek(int fd) {
             return 0;
@@ -149,7 +151,7 @@ class TestMsHookFunction:
             assert hook1.target.target_function_name == "close"
             assert hook1.callsite_address >= 0x4000
             assert hook1.replacement_address >= 0x4000
-            assert hook1.original_address == 0
+            assert hook1.original_address >= 0x4000
             assert str(hook1) == "%hookf close()"
 
             hook2 = hooks[1]
@@ -189,7 +191,7 @@ class TestMsHookFunction:
             assert hook.target.target_function_name == "MGGetBoolAnswer"
             assert hook.callsite_address >= 0x4000
             assert hook.replacement_address >= 0x4000
-            assert hook.original_address == 0
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hookf MGGetBoolAnswer()"
 
     def test_multiple_mshookfunction_msfindsymbol(self) -> None:
@@ -250,7 +252,7 @@ class TestMsHookFunction:
             assert hook.target.target_function_name == "MGCopyAnswer"
             assert hook.callsite_address >= 0x4000
             assert hook.replacement_address >= 0x4000
-            assert hook.original_address == 0
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hookf MGCopyAnswer()"
 
     def test_multiple_mshookfunction_dlsym(self) -> None:
@@ -291,6 +293,8 @@ class TestMsHookFunction:
             assert str(hook2) == "%hookf MGGetBoolAnswer()"
 
     def test_hookf_mshookfunction_dlsym_msfindsymbol(self) -> None:
+        # A tweak that uses both %hookf() and manual called to MSHookFunction()
+        # And the calls to MSHookFunction() don't store orig
         source_code = """
         #include <dlfcn.h>
         #import <Foundation/Foundation.h>
@@ -335,10 +339,10 @@ class TestMsHookFunction:
             assert hook3.target.target_function_name == "fclose"
             assert hook3.callsite_address >= 0x4000
             assert hook3.replacement_address >= 0x4000
-            assert hook3.original_address == 0
+            assert hook3.original_address >= 0x4000
             assert str(hook3) == "%hookf fclose()"
 
-    def test_mshookfunction_dlsym_dlopen(self) -> None:
+    def test_linked_hook_dlsym_resolves_target(self) -> None:
         source_code = """
         #include <dlfcn.h>
         #import <Foundation/Foundation.h>
@@ -366,7 +370,7 @@ class TestMsHookFunction:
             assert hook.original_address == 0
             assert str(hook) == "%hookf CalculatePerformExpression()"
 
-    def test_dlsym_mshookfunction_dlsym_dlopen(self) -> None:
+    def test_dlsym_resolves_both_hook_and_target(self) -> None:
         source_code = """
             #include <dlfcn.h>
             #import <Foundation/Foundation.h>
@@ -403,6 +407,7 @@ class TestMsHookFunction:
         # A tweak that uses MSFindSymbol to dynamically resolve MSHookFunction
         # And uses MSFindSymbol to dynamically resolve the function to be hooked
         source_code = """
+            static void *orig_CalculatePerformExpression = NULL;
             int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
                 return 1;
             }
@@ -414,7 +419,7 @@ class TestMsHookFunction:
                     MSImageRef calculator = MSGetImageByName("/System/Library/PrivateFrameworks/Calculate.framework/Calculate");
                     void *CalculatePerformExpression = MSFindSymbol(calculator, "CalculatePerformExpression");
 
-                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, NULL);
+                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, &orig_CalculatePerformExpression);
                 }
             }
             """  # noqa E501
@@ -428,7 +433,7 @@ class TestMsHookFunction:
             assert hook.target.target_function_name == "CalculatePerformExpression"
             assert hook.callsite_address >= 0x4000
             assert hook.replacement_address >= 0x4000
-            assert hook.original_address == 0
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hookf CalculatePerformExpression()"
 
     def test_msfindsymbol_resolves_hook_dlsym_resolves_target(self) -> None:
@@ -437,6 +442,7 @@ class TestMsHookFunction:
         source_code = """
             #include <dlfcn.h>
 
+            static void *orig_CalculatePerformExpression = NULL;
             int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
                 return 1;
             }
@@ -448,7 +454,7 @@ class TestMsHookFunction:
                     void *handle = dlopen("/System/Library/PrivateFrameworks/Calculate.framework/Calculate", RTLD_LAZY);
                     void *CalculatePerformExpression = dlsym(handle, "CalculatePerformExpression");
 
-                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, NULL);
+                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, &orig_CalculatePerformExpression);
                 }
             }
             """  # noqa E501
@@ -462,5 +468,40 @@ class TestMsHookFunction:
             assert hook.target.target_function_name == "CalculatePerformExpression"
             assert hook.callsite_address >= 0x4000
             assert hook.replacement_address >= 0x4000
-            assert hook.original_address == 0
+            assert hook.original_address >= 0x4000
+            assert str(hook) == "%hookf CalculatePerformExpression()"
+
+    def test_dlsym_resolves_hook_msfindsymbol_resolves_target(self) -> None:
+        # A tweak that uses dlsym to dynamically resolve MSHookFunction
+        # And uses MSFindSymbol to dynamically resolve the function to be hooked
+        source_code = """
+            #include <dlfcn.h>
+
+            static void *orig_CalculatePerformExpression = NULL;
+            int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
+                return 1;
+            }
+
+            %ctor {
+                void *substrate = dlopen("/usr/lib/libsubstrate.dylib", RTLD_LAZY);
+                void *_MSHookFunction = dlsym(substrate, "MSHookFunction");
+                if (_MSHookFunction) {
+                    MSImageRef calculator = MSGetImageByName("/System/Library/PrivateFrameworks/Calculate.framework/Calculate");
+                    void *CalculatePerformExpression = MSFindSymbol(calculator, "CalculatePerformExpression");
+
+                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, &orig_CalculatePerformExpression);
+                }
+            }
+            """  # noqa E501
+        with SnippetCompiler(source_code=source_code) as compiled_binary:
+            exec = Executable(file_path=compiled_binary)
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "CalculatePerformExpression"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hookf CalculatePerformExpression()"
