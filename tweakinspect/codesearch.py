@@ -209,27 +209,23 @@ class FunctionHookCodeSearchOperation(ABC):
             logging.error(f"Error resolving block IMP at {hex(imp_address)}: {exc}")
             return imp_address
 
-    def get_calls_to_function(self, function_name: str) -> list[CallerXRef]:
+    def get_invocations_resolved_by(self, function_name: str, resolver_name: str) -> list[CallerXRef]:
         invocations: list[CallerXRef] = []
 
-        function_addr = self.address_for_symbol_name_in_executable(function_name)
-        if function_addr:
-            invocations += self.macho_analyzer.calls_to(function_addr)
-
-        dlsym_addr = self.address_for_symbol_name_in_executable("_dlsym")
-        if not dlsym_addr:
+        resolver_addr = self.address_for_symbol_name_in_executable(resolver_name)
+        if not resolver_addr:
             return invocations
 
-        for dlsym_inv in self.macho_analyzer.calls_to(dlsym_addr):
+        for resolver_inv in self.macho_analyzer.calls_to(resolver_addr):
             analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
-                self.executable.binary, dlsym_inv.caller_func_start_address
+                self.executable.binary, resolver_inv.caller_func_start_address
             )
 
-            instr = analyzer.get_instruction_at_address(dlsym_inv.caller_addr)
+            instr = analyzer.get_instruction_at_address(resolver_inv.caller_addr)
             parsed_instr = ObjcInstruction.parse_instruction(analyzer, instr)
 
-            dlsym_arg2 = self.read_string_from_register(analyzer, "x1", parsed_instr)
-            if dlsym_arg2 != function_name and dlsym_arg2 != function_name[1:]:
+            resolver_arg2 = self.read_string_from_register(analyzer, "x1", parsed_instr)
+            if resolver_arg2 != function_name and resolver_arg2 != function_name[1:]:
                 continue
 
             store_instr = self.find_next_store_of_register(
@@ -254,9 +250,21 @@ class FunctionHookCodeSearchOperation(ABC):
                 CallerXRef(
                     destination_addr=VirtualMemoryPointer(0),
                     caller_addr=VirtualMemoryPointer(branch_instr.address),
-                    caller_func_start_address=dlsym_inv.caller_func_start_address,
+                    caller_func_start_address=resolver_inv.caller_func_start_address,
                 )
             )
+        return invocations
+
+    def get_calls_to_function(self, function_name: str) -> list[CallerXRef]:
+        invocations: list[CallerXRef] = []
+
+        function_addr = self.address_for_symbol_name_in_executable(function_name)
+        if function_addr:
+            invocations += self.macho_analyzer.calls_to(function_addr)
+
+        invocations += self.get_invocations_resolved_by(function_name, "_dlsym")
+        invocations += self.get_invocations_resolved_by(function_name, "_MSFindSymbol")
+
         return invocations
 
     def find_next_branch_to_register(

@@ -398,3 +398,69 @@ class TestMsHookFunction:
             assert hook.replacement_address >= 0x4000
             assert hook.original_address == 0
             assert str(hook) == "%hookf CalculatePerformExpression()"
+
+    def test_msfindsymbol_resolves_both_hook_and_target(self) -> None:
+        # A tweak that uses MSFindSymbol to dynamically resolve MSHookFunction
+        # And uses MSFindSymbol to dynamically resolve the function to be hooked
+        source_code = """
+            int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
+                return 1;
+            }
+
+            %ctor {
+                MSImageRef substrate = MSGetImageByName("/usr/lib/libsubstrate.dylib");
+                void *_MSHookFunction = MSFindSymbol(substrate, "MSHookFunction");
+                if (_MSHookFunction) {
+                    MSImageRef calculator = MSGetImageByName("/System/Library/PrivateFrameworks/Calculate.framework/Calculate");
+                    void *CalculatePerformExpression = MSFindSymbol(calculator, "CalculatePerformExpression");
+
+                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, NULL);
+                }
+            }
+            """  # noqa E501
+        with SnippetCompiler(source_code=source_code) as compiled_binary:
+            exec = Executable(file_path=compiled_binary)
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "CalculatePerformExpression"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf CalculatePerformExpression()"
+
+    def test_msfindsymbol_resolves_hook_dlsym_resolves_target(self) -> None:
+        # A tweak that uses MSFindSymbol to dynamically resolve MSHookFunction
+        # And uses dlsym to dynamically resolve the function to be hooked
+        source_code = """
+            #include <dlfcn.h>
+
+            int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
+                return 1;
+            }
+
+            %ctor {
+                MSImageRef substrate = MSGetImageByName("/usr/lib/libsubstrate.dylib");
+                void *_MSHookFunction = MSFindSymbol(substrate, "MSHookFunction");
+                if (_MSHookFunction) {
+                    void *handle = dlopen("/System/Library/PrivateFrameworks/Calculate.framework/Calculate", RTLD_LAZY);
+                    void *CalculatePerformExpression = dlsym(handle, "CalculatePerformExpression");
+
+                    ((void (*)(void *, void *, void *))_MSHookFunction)(CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, NULL);
+                }
+            }
+            """  # noqa E501
+        with SnippetCompiler(source_code=source_code) as compiled_binary:
+            exec = Executable(file_path=compiled_binary)
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "CalculatePerformExpression"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf CalculatePerformExpression()"

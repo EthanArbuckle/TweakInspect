@@ -58,15 +58,20 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                     callsite_address=int(invocation.caller_addr),
                 )
         # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
-        for lookup_func in ["MSFindSymbol", "dlsym"]:
-            lookup_func_invocation = self.last_invocation_of_function(
-                function_analyzer, lookup_func, invocation.caller_addr
+        closest_resolver_inv = None
+        for resolver_func_name in ["MSFindSymbol", "dlsym"]:
+            resolver_inv = self.last_invocation_of_function(
+                function_analyzer, resolver_func_name, invocation.caller_addr
             )
-            if not lookup_func_invocation:
+            if not resolver_inv:
                 continue
 
+            if closest_resolver_inv is None or resolver_inv.address > closest_resolver_inv.address:
+                closest_resolver_inv = resolver_inv
+
+        if closest_resolver_inv:
             # Found it, x1 should be a string that is the class name
-            symbol_name = self.read_string_from_register(function_analyzer, "x1", lookup_func_invocation)
+            symbol_name = self.read_string_from_register(function_analyzer, "x1", closest_resolver_inv)
             if symbol_name:
                 symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
 
