@@ -8,21 +8,8 @@ from tweakinspect.models import FunctionTarget, Hook
 
 
 class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
-    def analyze(self) -> list[Hook]:
 
-        MSHookFunction_addr = self.address_for_symbol_name_in_executable("_MSHookFunction")
-        if not MSHookFunction_addr:
-            # The binary does not use MSHookFunction()
-            return []
-
-        # Analyze every invocation of MSHookFunction()
-        invocations = self.macho_analyzer.calls_to(MSHookFunction_addr)
-        results: list[Hook] = []
-        for invocation in invocations:
-            result = self.analyze_invocation(invocation)
-            if result:
-                results.append(result)
-        return results
+    FUNCTION_TO_FIND = "_MSHookFunction"
 
     def analyze_invocation(self, invocation: CallerXRef) -> Hook | None:
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
@@ -53,7 +40,8 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
                 # It could be a string
                 # ?? function = analyzer.exported_symbol_name_for_address(x0.value)
                 symbol_name = self.read_string_from_register(function_analyzer, "x0", parsed_instructions)
-                symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
+                if symbol_name:
+                    symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
 
                 # If the string is a path, it's not a symbol name
                 if "/" in symbol_name:
@@ -79,7 +67,8 @@ class MSHookFunctionCodeSearchOperation(FunctionHookCodeSearchOperation):
 
             # Found it, x1 should be a string that is the class name
             symbol_name = self.read_string_from_register(function_analyzer, "x1", lookup_func_invocation)
-            symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
+            if symbol_name:
+                symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
 
             return Hook(
                 target=FunctionTarget(

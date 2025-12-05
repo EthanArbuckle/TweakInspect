@@ -8,24 +8,10 @@ from tweakinspect.models import Hook, ObjectiveCTarget
 
 
 class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
-    def analyze(self) -> list[Hook]:
 
-        # Find the address of method_setImplementation()
-        method_setImplementation_addr = self.address_for_symbol_name_in_executable("_method_setImplementation")
-        if not method_setImplementation_addr:
-            # The binary does not use method_setImplementation()
-            return []
+    FUNCTION_TO_FIND = "_method_setImplementation"
 
-        # Analyze every invocation of method_setImplementation()
-        invocations = self.macho_analyzer.calls_to(method_setImplementation_addr)
-        results: list[Hook] = []
-        for invocation_idx, invocation in enumerate(invocations):
-            result = self.analyze_invocation(invocation, invocation_idx)
-            if result:
-                results.append(result)
-        return results
-
-    def analyze_invocation(self, invocation: CallerXRef, invocation_idx: int) -> Hook | None:
+    def analyze_invocation(self, invocation: CallerXRef) -> Hook | None:
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
             self.executable.binary, invocation.caller_func_start_address
         )
@@ -97,12 +83,26 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
             return None
 
         replacement_imp_address = self.resolve_block_imp(replacement_imp_reg.value)
+        set_impl_retval_str_instr = self.find_next_store_of_register(function_analyzer, invocation.caller_addr, "x0")
+
+        original_imp_addr = 0
+        if set_impl_retval_str_instr:
+            base_reg = set_impl_retval_str_instr.reg_name(set_impl_retval_str_instr.operands[1].value.mem.base)
+            original_imp_reg = self.get_register_contents_at_instruction(
+                function_analyzer,
+                base_reg,
+                set_impl_retval_str_instr,
+            )
+
+            if original_imp_reg.type is RegisterContentsType.IMMEDIATE:
+                original_imp_addr = original_imp_reg.value
+
         return Hook(
             target=ObjectiveCTarget(
                 class_name=class_name,
                 method_name=selector_name,
             ),
             replacement_address=replacement_imp_address,
-            original_address=0,
+            original_address=original_imp_addr,
             callsite_address=int(invocation.caller_addr),
         )

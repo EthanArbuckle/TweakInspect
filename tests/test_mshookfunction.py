@@ -365,3 +365,36 @@ class TestMsHookFunction:
             assert hook.replacement_address >= 0x4000
             assert hook.original_address == 0
             assert str(hook) == "%hookf CalculatePerformExpression()"
+
+    def test_dlsym_mshookfunction_dlsym_dlopen(self) -> None:
+        source_code = """
+            #include <dlfcn.h>
+            #import <Foundation/Foundation.h>
+
+            int hooked_CalculatePerformExpression(char *expression, int a, int b, char *c) {
+                return 1;
+            }
+
+            %ctor {
+                void *substrate = dlopen("/usr/lib/libsubstrate.dylib", RTLD_LAZY);
+                void *_MSHookFunction = dlsym(substrate, "MSHookFunction");
+                if (_MSHookFunction) {
+                    void *handle = dlopen("/System/Library/PrivateFrameworks/Calculate.framework/Calculate", RTLD_LAZY);
+                    void *CalculatePerformExpression = dlsym(handle, "CalculatePerformExpression");
+
+                    ((void (*)(void *, void *, void *))_MSHookFunction)((void *)CalculatePerformExpression, (void *)hooked_CalculatePerformExpression, NULL);
+                }
+            }
+            """  # noqa E501
+        with SnippetCompiler(source_code=source_code) as compiled_binary:
+            exec = Executable(file_path=compiled_binary)
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "CalculatePerformExpression"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf CalculatePerformExpression()"

@@ -21,7 +21,6 @@ except Exception as exc:
     sys.exit(1)
 
 
-@staticmethod
 def new_process_fixup_pointer_chain(
     binary: MachoBinary,
     dyld_bound_symbols_table: List[DyldBoundSymbol],

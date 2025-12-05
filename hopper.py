@@ -10,7 +10,7 @@ from tweakinspect.executable import Executable
 
 print("TweakInspect hook analysis running")
 
-doc = Document.getCurrentDocument()  # noqa: F821
+doc = Document.getCurrentDocument()  # type: ignore[name-defined] # noqa: F821
 __TEXT_SEG = doc.getSegmentByName("__TEXT")
 
 p = Path(doc.getExecutableFilePath())

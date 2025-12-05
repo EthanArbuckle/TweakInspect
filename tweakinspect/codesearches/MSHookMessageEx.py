@@ -8,22 +8,8 @@ from tweakinspect.models import Hook, ObjectiveCTarget
 
 
 class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
-    def analyze(self) -> list[Hook]:
 
-        # Find the address of MSHookMessageEx()
-        MSHookMessageEx_addr = self.address_for_symbol_name_in_executable("_MSHookMessageEx")
-        if not MSHookMessageEx_addr:
-            # The binary does not use MSHookMessageEx()
-            return []
-
-        # Analyze every invocation of MSHookMessageEx()
-        invocations = self.macho_analyzer.calls_to(MSHookMessageEx_addr)
-        results: list[Hook] = []
-        for invocation in invocations:
-            result = self.analyze_invocation(invocation)
-            if result:
-                results.append(result)
-        return results
+    FUNCTION_TO_FIND = "_MSHookMessageEx"
 
     def analyze_invocation(self, invocation: CallerXRef) -> Hook | None:
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(

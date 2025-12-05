@@ -2,6 +2,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from types import TracebackType
 
 
 class SnippetCompiler:
@@ -65,5 +66,7 @@ class SnippetCompiler:
         self.compile()
         return self.compiled_binary_path
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
+    ) -> None:
         shutil.rmtree(self.temp_dir_path.as_posix(), ignore_errors=True)

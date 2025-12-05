@@ -122,3 +122,39 @@ class TestClassReplaceMethod:
             assert hook3.replacement_address >= 0x4000
             assert hook3.original_address == 0
             assert str(hook3) == "%hook -[backboardd reboot]"
+
+    def test_dlsym_class_replacemethod(self) -> None:
+        source_code = """
+            #include <dlfcn.h>
+            #include <objc/runtime.h>
+            #import <Foundation/Foundation.h>
+
+            @interface SBIconController : NSObject
+            - (void)reloadIcons;
+            @end
+
+            void hooked_reloadIcons(id self, SEL _cmd) { }
+
+            %ctor {
+                void *libobjc = dlopen("/usr/lib/libobjc.A.dylib", RTLD_LAZY);
+                void *_class_replaceMethod = dlsym(libobjc, "class_replaceMethod");
+                if (_class_replaceMethod) {
+                    Class cls = objc_getClass("SBIconController");
+                    SEL selector = sel_registerName("reloadIcons");
+                    ((IMP (*)(Class, SEL, IMP, const char *))_class_replaceMethod)(cls, selector, (IMP)hooked_reloadIcons, "v@:");
+                }
+            }
+            """  # noqa E501
+        with SnippetCompiler(source_code=source_code) as compiled_binary:
+            exec = Executable(file_path=compiled_binary)
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, ObjectiveCTarget)
+            assert hook.target.class_name == "SBIconController"
+            assert hook.target.method_name == "reloadIcons"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hook -[SBIconController reloadIcons]"

@@ -8,22 +8,8 @@ from tweakinspect.models import Hook, NewObjectiveCMethodTarget
 
 
 class ClassAddMethodCodeSearchOperation(FunctionHookCodeSearchOperation):
-    def analyze(self) -> list[Hook]:
 
-        # Find the address of class_addMethod()
-        class_addMethod_addr = self.address_for_symbol_name_in_executable("_class_addMethod")
-        if not class_addMethod_addr:
-            # The binary doesn't use it
-            return []
-
-        # Analyze every invocation
-        invocations = self.macho_analyzer.calls_to(class_addMethod_addr)
-        results: list[Hook] = []
-        for invocation in invocations:
-            result = self.analyze_invocation(invocation)
-            if result:
-                results.append(result)
-        return results
+    FUNCTION_TO_FIND = "_class_addMethod"
 
     def analyze_invocation(self, invocation: CallerXRef) -> Hook | None:
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(

@@ -16,7 +16,6 @@ from tweakinspect.codesearches.MSHookMessageEx import MSHookMessageExCodeSearchO
 from tweakinspect.models import Hook
 from tweakinspect.set_id0 import does_call_setgid0, does_call_setuid0
 
-
 try:
     import strongarm_patch  # noqa F401
 except Exception as exc:

@@ -3,8 +3,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from capstone import CsInsn
-from capstone.arm64 import ARM64_OP_IMM, ARM64_REG_SP
-from strongarm.macho import MachoAnalyzer, ObjcSelector
+from capstone.arm64 import ARM64_OP_IMM, ARM64_OP_MEM, ARM64_OP_REG, ARM64_REG_SP
+from strongarm.macho import CallerXRef, MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
 from tweakinspect.models import Hook
@@ -16,12 +16,22 @@ if TYPE_CHECKING:
 
 class FunctionHookCodeSearchOperation(ABC):
 
+    FUNCTION_TO_FIND: str
+
     def __init__(self, executable: "Executable") -> None:
         self.executable = executable
         self.macho_analyzer = MachoAnalyzer(executable.binary)
 
-    @abstractmethod
     def analyze(self) -> list[Hook]:
+        results: list[Hook] = []
+        for invocation in self.get_calls_to_function(self.FUNCTION_TO_FIND):
+            result = self.analyze_invocation(invocation)
+            if result:
+                results.append(result)
+        return results
+
+    @abstractmethod
+    def analyze_invocation(self, invocation: CallerXRef) -> Hook | None:
         pass
 
     def address_for_symbol_name_in_executable(self, symbol_name: str) -> int | None:
@@ -198,3 +208,108 @@ class FunctionHookCodeSearchOperation(ABC):
         except Exception as exc:
             logging.error(f"Error resolving block IMP at {hex(imp_address)}: {exc}")
             return imp_address
+
+    def get_calls_to_function(self, function_name: str) -> list[CallerXRef]:
+        invocations: list[CallerXRef] = []
+
+        function_addr = self.address_for_symbol_name_in_executable(function_name)
+        if function_addr:
+            invocations += self.macho_analyzer.calls_to(function_addr)
+
+        dlsym_addr = self.address_for_symbol_name_in_executable("_dlsym")
+        if not dlsym_addr:
+            return invocations
+
+        for dlsym_inv in self.macho_analyzer.calls_to(dlsym_addr):
+            analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+                self.executable.binary, dlsym_inv.caller_func_start_address
+            )
+
+            instr = analyzer.get_instruction_at_address(dlsym_inv.caller_addr)
+            parsed_instr = ObjcInstruction.parse_instruction(analyzer, instr)
+
+            dlsym_arg2 = self.read_string_from_register(analyzer, "x1", parsed_instr)
+            if dlsym_arg2 != function_name and dlsym_arg2 != function_name[1:]:
+                continue
+
+            store_instr = self.find_next_store_of_register(
+                analyzer,
+                instr.address,
+                "x0",
+            )
+            if not store_instr:
+                continue
+
+            store_stack_off = store_instr.operands[1].value.mem.disp
+            load_instr = self.find_next_load_from_stack_offset(analyzer, store_instr.address, store_stack_off)
+            if not load_instr:
+                continue
+
+            load_dst_reg = load_instr.reg_name(load_instr.operands[0].value.reg)
+            branch_instr = self.find_next_branch_to_register(analyzer, load_instr.address, load_dst_reg)
+            if not branch_instr:
+                continue
+
+            invocations.append(
+                CallerXRef(
+                    destination_addr=VirtualMemoryPointer(0),
+                    caller_addr=VirtualMemoryPointer(branch_instr.address),
+                    caller_func_start_address=dlsym_inv.caller_func_start_address,
+                )
+            )
+        return invocations
+
+    def find_next_branch_to_register(
+        self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, register: str
+    ) -> CsInsn | None:
+        branch_mnemonics = ["br", "blr"]
+
+        for instruction in function_analyzer.instructions:
+            if instruction.address <= start_address:
+                continue
+
+            if instruction.mnemonic not in branch_mnemonics:
+                continue
+
+            for operand in instruction.operands:
+                if operand.type == ARM64_OP_REG:
+                    if instruction.reg_name(operand.value.reg) == register:
+                        return instruction
+
+        return None
+
+    def find_next_store_of_register(
+        self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, register: str
+    ) -> CsInsn | None:
+        store_mnemonics = ["str", "stur", "stp"]
+
+        for instruction in function_analyzer.instructions:
+            if instruction.address <= start_address:
+                continue
+
+            if instruction.mnemonic not in store_mnemonics:
+                continue
+
+            for operand in instruction.operands:
+                if operand.type == ARM64_OP_REG:
+                    if instruction.reg_name(operand.value.reg) == register:
+                        return instruction
+
+        return None
+
+    def find_next_load_from_stack_offset(
+        self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, stack_offset: int
+    ) -> CsInsn | None:
+        for instruction in function_analyzer.instructions:
+            if instruction.address <= start_address:
+                continue
+
+            if instruction.mnemonic != "ldr":
+                continue
+
+            for operand in instruction.operands:
+                if operand.type == ARM64_OP_MEM:
+                    if operand.value.mem.base == ARM64_REG_SP and operand.value.mem.disp == stack_offset:
+                        return instruction
+
+        return None
