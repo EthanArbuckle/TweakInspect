@@ -83,19 +83,6 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
             return None
 
         replacement_imp_address = self.resolve_block_imp(replacement_imp_reg.value)
-        set_impl_retval_str_instr = self.find_next_store_of_register(function_analyzer, invocation.caller_addr, "x0")
-
-        original_imp_addr = 0
-        if set_impl_retval_str_instr:
-            base_reg = set_impl_retval_str_instr.reg_name(set_impl_retval_str_instr.operands[1].value.mem.base)
-            original_imp_reg = self.get_register_contents_at_instruction(
-                function_analyzer,
-                base_reg,
-                set_impl_retval_str_instr,
-            )
-
-            if original_imp_reg.type is RegisterContentsType.IMMEDIATE:
-                original_imp_addr = original_imp_reg.value
 
         return Hook(
             target=ObjectiveCTarget(
@@ -103,6 +90,6 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
                 method_name=selector_name,
             ),
             replacement_address=replacement_imp_address,
-            original_address=original_imp_addr,
+            original_address=0,
             callsite_address=int(invocation.caller_addr),
         )

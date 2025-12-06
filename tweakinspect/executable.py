@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import unix_ar
-from strongarm.macho import MachoParser
+from strongarm.macho import MachoAnalyzer, MachoParser
 
 from tweakinspect.codesearches.class_addMethod import ClassAddMethodCodeSearchOperation
 from tweakinspect.codesearches.class_replaceMethod import ClassReplaceMethodCodeSearchOperation
@@ -73,6 +73,28 @@ class Executable(object):
         if self.original_file_name:
             return f"Executable({self.original_file_name})"
         return str(self.file_path)
+
+    def address_of_symbol(self, symbol_name: str) -> int | None:
+        binary = MachoParser(self.file_path).get_arm64_slice()
+        analyzer = MachoAnalyzer.get_analyzer(binary)
+        symbol = analyzer.callable_symbol_for_symbol_name(symbol_name)
+        if symbol:
+            return symbol.address
+        return None
+
+    def symbol_contains_address(self, symbol_name: str, address: int) -> bool:
+        binary = MachoParser(self.file_path).get_arm64_slice()
+        analyzer = MachoAnalyzer.get_analyzer(binary)
+        symbol = analyzer.callable_symbol_for_symbol_name(symbol_name)
+        if not symbol:
+            return False
+
+        symbol_entry_address = symbol.address
+        symbol_end_address = analyzer.get_function_end_address(symbol_entry_address)
+        if not symbol_end_address:
+            return False
+
+        return symbol_entry_address <= address < symbol_end_address
 
 
 class DebFile(object):

@@ -4,6 +4,8 @@ import tempfile
 from pathlib import Path
 from types import TracebackType
 
+from tweakinspect.executable import Executable
+
 
 class SnippetCompiler:
     def __init__(self, source_code: str, generator: str = "MobileSubstrate") -> None:
@@ -11,12 +13,16 @@ class SnippetCompiler:
         self.generator = generator
         self.source_file_path = self.temp_dir_path / "source.xm"
         self.compiled_binary_path = self.temp_dir_path / "test_binary"
+
+        # Add Foundation import to the top of the source code
+        source_code = f"#import <Foundation/Foundation.h>\n{source_code}"
+
         self.source_file_path.write_text(source_code)
 
     def compile(self) -> None:
         # Preprocess the source
         theos_path = Path("~/theos").expanduser()
-        logos_source_path = Path(f"{self.source_file_path.as_posix()}.mm")
+        logos_source_path = Path(f"{self.source_file_path.as_posix()}.m")
         logos_source = subprocess.check_output(
             [
                 str(theos_path / "bin/logos.pl"),
@@ -62,9 +68,9 @@ class SnippetCompiler:
         except subprocess.CalledProcessError as e:
             raise Exception(e.stdout.decode("utf-8"))
 
-    def __enter__(self) -> Path:
+    def __enter__(self) -> Executable:
         self.compile()
-        return self.compiled_binary_path
+        return Executable(file_path=self.compiled_binary_path)
 
     def __exit__(
         self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
