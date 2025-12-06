@@ -237,7 +237,10 @@ class FunctionHookCodeSearchOperation(ABC):
                 continue
 
             store_stack_off = store_instr.operands[1].value.mem.disp
-            load_instr = self.find_next_load_from_stack_offset(analyzer, store_instr.address, store_stack_off)
+            store_base = store_instr.operands[1].value.mem.base
+            load_instr = self.find_next_load_from_stack_offset(
+                analyzer, store_instr.address, store_base, store_stack_off
+            )
             if not load_instr:
                 continue
 
@@ -290,7 +293,6 @@ class FunctionHookCodeSearchOperation(ABC):
         self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, register: str
     ) -> CsInsn | None:
         store_mnemonics = ["str", "stur", "stp"]
-
         for instruction in function_analyzer.instructions:
             if instruction.address <= start_address:
                 continue
@@ -306,18 +308,18 @@ class FunctionHookCodeSearchOperation(ABC):
         return None
 
     def find_next_load_from_stack_offset(
-        self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, stack_offset: int
+        self, function_analyzer: ObjcFunctionAnalyzer, start_address: int, base_reg: int, stack_offset: int
     ) -> CsInsn | None:
+        load_mnemonics = ["ldr", "ldur", "ldp"]
         for instruction in function_analyzer.instructions:
             if instruction.address <= start_address:
                 continue
 
-            if instruction.mnemonic != "ldr":
+            if instruction.mnemonic not in load_mnemonics:
                 continue
 
             for operand in instruction.operands:
                 if operand.type == ARM64_OP_MEM:
-                    if operand.value.mem.base == ARM64_REG_SP and operand.value.mem.disp == stack_offset:
+                    if operand.value.mem.base == base_reg and operand.value.mem.disp == stack_offset:
                         return instruction
-
         return None
