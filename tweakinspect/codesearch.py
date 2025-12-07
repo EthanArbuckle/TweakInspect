@@ -154,7 +154,7 @@ class FunctionHookCodeSearchOperation(ABC):
             # Handle situations in which an address is calculated across 2 instructions:
             # adrp  x3, #0xf000
             # add   x3, #30
-            # in which x3 should be evalutated to #0xf030
+            # in which x3 should be evaluated to #0xf030
             if instr.mnemonic == "adrp":
                 next_instr = function_analyzer.get_instruction_at_address(current_address + 4)
                 if next_instr.mnemonic == "add":

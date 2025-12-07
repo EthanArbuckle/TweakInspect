@@ -149,3 +149,65 @@ class TestClassReplaceMethod:
             assert hook.replacement_address == executable.address_of_symbol("_hooked_reloadIcons")
             assert hook.original_address == 0
             assert str(hook) == "%hook -[SBIconController reloadIcons]"
+
+    def test_MSFindSymbol_class_replacemethod(self) -> None:
+        source_code = """
+            #include <objc/runtime.h>
+
+            @interface SBIconController : NSObject
+            - (void)reloadIcons;
+            @end
+
+            void hooked_reloadIcons(id self, SEL _cmd) { }
+
+            __attribute__((constructor)) void tweak_init(void) {
+                MSImageRef libobjc = MSGetImageByName("/usr/lib/libobjc.A.dylib");
+                void *_class_replaceMethod = MSFindSymbol(libobjc, "class_replaceMethod");
+                if (_class_replaceMethod) {
+                    Class cls = objc_getClass("SBIconController");
+                    SEL selector = sel_registerName("reloadIcons");
+                    ((IMP (*)(Class, SEL, IMP, const char *))_class_replaceMethod)(cls, selector, (IMP)hooked_reloadIcons, "v@:");
+                }
+            }
+            """  # noqa: E501
+        with SnippetCompiler(source_code=source_code) as executable:
+            hooks: list[Hook] = sorted(executable.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, ObjectiveCTarget)
+            assert hook.target.class_name == "SBIconController"
+            assert hook.target.method_name == "reloadIcons"
+            assert executable.symbol_contains_address("_tweak_init", hook.callsite_address)
+            assert hook.replacement_address == executable.address_of_symbol("_hooked_reloadIcons")
+            assert hook.original_address == 0
+            assert str(hook) == "%hook -[SBIconController reloadIcons]"
+
+    def test_class_replacemethod_save_original(self) -> None:
+        source_code = """
+        #import <objc/runtime.h>
+
+        @interface SpringBoard : NSObject
+        - (void)test;
+        @end
+
+        IMP original_test_imp = NULL;
+        void newTest(id self, SEL _cmd) { }
+
+        __attribute__((constructor)) void initialize(void) {
+            Class cls = objc_getClass("SpringBoard");
+            original_test_imp = class_replaceMethod(cls, @selector(test), (IMP)newTest, "v@:");
+        }
+        """
+        with SnippetCompiler(source_code=source_code, generator="internal") as executable:
+            hooks: list[Hook] = sorted(executable.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, ObjectiveCTarget)
+            assert hook.target.class_name == "SpringBoard"
+            assert hook.target.method_name == "test"
+            assert executable.symbol_contains_address("_initialize", hook.callsite_address)
+            assert hook.replacement_address == executable.address_of_symbol("_newTest")
+            assert hook.original_address == executable.address_of_symbol("_original_test_imp")
+            assert str(hook) == "%hook -[SpringBoard test]"

@@ -56,12 +56,29 @@ class ClassReplaceMethodCodeSearchOperation(FunctionHookCodeSearchOperation):
             logging.debug(f"Replacement function not found in x2 for {class_name} {selector_name}")
             return None
 
+        retval_store_instr = self.find_next_store_of_register(function_analyzer, invocation.caller_addr, "x0")
+
+        original_imp_addr = 0
+        if retval_store_instr:
+            mem_op = retval_store_instr.operands[1]
+            offset = mem_op.value.mem.disp
+            base_reg = retval_store_instr.reg_name(mem_op.value.mem.base)
+
+            base_reg_contents = self.get_register_contents_at_instruction(
+                function_analyzer,
+                base_reg,
+                retval_store_instr,
+            )
+
+            if base_reg_contents.type == RegisterContentsType.IMMEDIATE:
+                original_imp_addr = base_reg_contents.value + offset
+
         return Hook(
             target=ObjectiveCTarget(
                 class_name=class_name,
                 method_name=selector_name,
             ),
             replacement_address=replacement_func_reg.value,
-            original_address=0,
+            original_address=original_imp_addr,
             callsite_address=int(invocation.caller_addr),
         )
